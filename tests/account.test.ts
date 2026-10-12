@@ -57,6 +57,22 @@ test('by default shows the 5-hour window, and the 7-day one once half used', () 
   expect(usageOf([], DEFAULT)).toEqual({ text: '', used: 0 })
 })
 
+test('the settings turn each window on or off', () => {
+  expect(usageOf([FIVE, WEEK], { fiveHour: false, weekly: 'always' })).toEqual({ text: '7d 30%, resets Fri', used: 30 })
+  expect(usageOf([FIVE, { ...WEEK, percentUsed: 90 }], { fiveHour: true, weekly: 'never' })).toEqual({ text: '5h 42%, resets 18:30', used: 42.4 })
+  expect(usageOf([FIVE, WEEK], { fiveHour: false, weekly: 'never' })).toEqual({ text: '', used: 0 })
+})
+
+test('the footer follows the settings', { options: { fiveHourLimit: false, weeklyLimit: 'always' } }, async ($, on) => {
+  fakeSession(on, ACME)
+  mock.store(on)
+  on('session.usage', () => ({ value: { startedAt: 0, context: {} as never, rateLimits: [FIVE, WEEK] } }))
+  await $.command.run({ command: 'whoami', args: '' } as never)
+  const ui = await $.ui.mount({ plugin: 'whoami', surface: 'terminal', component: 'SessionMode', props: { modes: [] } })
+  expect(await ui.find({ type: 'Text', text: 'Acme · me@acme.com · 7d 30%, resets Fri' })).toBeTruthy()
+  await ui.unmount()
+})
+
 test('the footer shows the account, plan and usage beside the other modes', async ($, on) => {
   fakeSession(on, ACME)
   mock.store(on)

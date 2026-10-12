@@ -7,7 +7,7 @@ const USAGE = '/whoami shows the account. /whoami pin expects it in this folder,
 let account: Account = UNKNOWN
 let plan = '' // "Max 20x"
 let limits: readonly Limit[] = []
-const show: Show = { fiveHour: true, weekly: 'over-half' }
+let show: Show = { fiveHour: true, weekly: 'over-half' }
 let pin: { dir: string; account: Account } | undefined
 let isAllowed = false // `/whoami ok` was run in this session
 
@@ -70,7 +70,12 @@ async function command($: EngineInterface, arg: string) {
   return `Signed in: ${account.label}.${expected}`
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  show = {
+    fiveHour: options.fiveHourLimit !== false,
+    weekly: options.weeklyLimit === 'always' || options.weeklyLimit === 'never' ? options.weeklyLimit : 'over-half',
+  }
+
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'whoami', description: `Which Claude account this session uses. ${USAGE}` }).catch(() => {})
     void check($).catch(() => {})

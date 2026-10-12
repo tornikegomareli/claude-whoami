@@ -17,5 +17,24 @@
     "usage",
     "rate-limit",
     "footer"
-  ]
+  ],
+  "userConfig": {
+    "fiveHourLimit": {
+      "type": "boolean",
+      "title": "Show the 5-hour limit",
+      "description": "On: the footer shows how much of the 5-hour usage limit is used, and when it resets.",
+      "default": true
+    },
+    "weeklyLimit": {
+      "type": "string",
+      "title": "Show the weekly limit",
+      "description": "always: the footer always shows the weekly usage limit. over-half: only once it is 50% used. never: it is not shown.",
+      "default": "over-half",
+      "options": [
+        "over-half",
+        "always",
+        "never"
+      ]
+    }
+  }
 }
