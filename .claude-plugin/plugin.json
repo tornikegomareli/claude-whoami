@@ -1,0 +1,21 @@
+{
+  "name": "whoami",
+  "version": "0.1.0",
+  "description": "Claude Code mod: shows which Claude account, organization and plan the session uses and how much of the usage limit is left, and holds prompts in a folder pinned to another account.",
+  "author": {
+    "name": "tornikegomareli",
+    "url": "https://github.com/tornikegomareli"
+  },
+  "repository": "https://github.com/tornikegomareli/claude-whoami",
+  "supportUrl": "https://github.com/tornikegomareli/claude-whoami/issues",
+  "documentationUrl": "https://github.com/tornikegomareli/claude-whoami#readme",
+  "license": "MIT",
+  "keywords": [
+    "account",
+    "organization",
+    "login",
+    "usage",
+    "rate-limit",
+    "footer"
+  ]
+}

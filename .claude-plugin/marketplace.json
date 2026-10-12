@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-whoami",
+  "description": "whoami, a Claude Code mod: the signed-in account, plan and usage limit in the prompt footer.",
+  "owner": {
+    "name": "tornikegomareli"
+  },
+  "plugins": [
+    {
+      "name": "whoami",
+      "description": "Shows which Claude account, organization and plan the session uses and how much of the usage limit is left, and holds prompts in a folder pinned to another account.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}
