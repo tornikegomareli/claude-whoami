@@ -44,6 +44,8 @@ claude --plugin-dir ./claude-whoami
 
 </details>
 
+The installer may say that 2 config options are not set. The defaults are fine, and [`/config`](#settings) changes them.
+
 Mods are an early-access Claude Code feature, and their API can change between releases.
 
 ## What you see
