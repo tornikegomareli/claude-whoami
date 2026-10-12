@@ -9,8 +9,11 @@ export type AuthStatus = {
   orgName?: string
 }
 
-// `id` tells accounts apart; `label` is what the person reads.
+// `id` is what a pin compares; `label` is what the person reads.
 export type Account = { id: string; label: string }
+
+// Folder path to the account expected there.
+export type Pins = Record<string, Account>
 
 export const UNKNOWN: Account = { id: 'unknown', label: 'account unknown' }
 
@@ -31,3 +34,10 @@ export function parseStatus(stdout: string): AuthStatus | undefined {
   }
 }
 
+// The pin of `dir` or of its nearest parent folder.
+export function pinFor(pins: Pins, dir: string): { dir: string; account: Account } | undefined {
+  for (let d = dir; d; d = d.slice(0, d.lastIndexOf('/'))) {
+    const account = pins[d]
+    if (account) return { dir: d, account }
+  }
+}
