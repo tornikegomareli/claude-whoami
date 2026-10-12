@@ -1,9 +1,9 @@
 import type { On } from 'claude-code'
 import { test, expect, mock } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
-import { accountOf, pinFor } from '../hooks/account'
+import { accountOf, pinFor, planOf, usageOf } from '../hooks/account'
 
-const ACME = { loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', email: 'me@acme.com', orgId: 'org-acme', orgName: 'Acme' }
+const ACME = { loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', email: 'me@acme.com', orgId: 'org-acme', orgName: 'Acme', subscriptionType: 'max' }
 const HOME = { loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', email: 'me@gmail.com', orgId: 'org-home', orgName: "me@gmail.com's Organization" }
 const TYPED = { kind: 'composer' } as never
 
@@ -37,12 +37,47 @@ test('a pin covers its folder and subfolders only', () => {
   expect(pinFor(pins, '/workshop')).toBe(undefined)
 })
 
-test('the footer shows the account beside the other modes', async ($, on) => {
+// Local times, so the expected text does not depend on the test machine's time zone.
+const AT_18_30 = new Date(2026, 9, 12, 18, 30).toISOString()
+const FRIDAY = new Date(2026, 9, 16, 9, 0).toISOString()
+
+test('names the plan with its size', () => {
+  expect(planOf('max', 'default_claude_max_20x')).toBe('Max 20x')
+  expect(planOf('pro', undefined)).toBe('Pro')
+  expect(planOf(undefined, 'default_claude_max_5x')).toBe('')
+})
+
+const DEFAULT = { fiveHour: true, weekly: 'over-half' } as const
+const FIVE = { kind: 'five_hour', percentUsed: 42.4, resetsAt: AT_18_30 }
+const WEEK = { kind: 'seven_day', percentUsed: 30, resetsAt: FRIDAY }
+
+test('by default shows the 5-hour window, and the 7-day one once half used', () => {
+  expect(usageOf([FIVE, WEEK], DEFAULT)).toEqual({ text: '5h 42%, resets 18:30', used: 42.4 })
+  expect(usageOf([{ kind: 'five_hour', percentUsed: 7 }, { ...WEEK, percentUsed: 63 }], DEFAULT)).toEqual({ text: '5h 7% · 7d 63%, resets Fri', used: 63 })
+  expect(usageOf([], DEFAULT)).toEqual({ text: '', used: 0 })
+})
+
+test('the footer shows the account, plan and usage beside the other modes', async ($, on) => {
   fakeSession(on, ACME)
   mock.store(on)
+  mock.env(on, { HOME: '/home/me' })
+  on('session.authorize', () => ({ value: { handle: 'h', kind: 'bearer' } }))
+  on('fs.read', (_$, e) => ({ value: e.path === '/home/me/.claude.json' ? JSON.stringify({ oauthAccount: { organizationRateLimitTier: 'default_claude_max_20x' } }) : '' }))
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
   expect((await $.command.run({ command: 'whoami', args: '' } as never)).text).toBe('Signed in: Acme · me@acme.com.')
+  await $.session.measure({ context: {} as never, rateLimits: [{ kind: 'five_hour', percentUsed: 42, resetsAt: AT_18_30 }], changed: ['rateLimits'] })
   const ui = await $.ui.mount({ plugin: 'whoami', surface: 'terminal', component: 'SessionMode', props: { modes: ['focus'] } })
-  expect(await ui.find({ type: 'Text', text: 'focus & Acme · me@acme.com' })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: 'focus & Acme · me@acme.com · Max 20x · 5h 42%, resets 18:30' })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('the footer shows usage the session had before the mod loaded', async ($, on) => {
+  fakeSession(on, ACME)
+  mock.store(on)
+  on('session.usage', () => ({ value: { startedAt: 0, context: {} as never, rateLimits: [{ kind: 'five_hour', percentUsed: 34, resetsAt: AT_18_30 }] } }))
+  await $.command.run({ command: 'whoami', args: '' } as never)
+  const ui = await $.ui.mount({ plugin: 'whoami', surface: 'terminal', component: 'SessionMode', props: { modes: [] } })
+  expect(await ui.find({ type: 'Text', text: 'Acme · me@acme.com · 5h 34%, resets 18:30' })).toBeTruthy()
   await ui.unmount()
 })
 

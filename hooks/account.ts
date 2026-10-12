@@ -7,7 +7,11 @@ export type AuthStatus = {
   email?: string
   orgId?: string
   orgName?: string
+  subscriptionType?: string
 }
+
+// One usage-limit window, as `session.measure` reports it.
+export type Limit = { kind: string; percentUsed: number; resetsAt?: string }
 
 // `id` is what a pin compares; `label` is what the person reads.
 export type Account = { id: string; label: string }
@@ -32,6 +36,37 @@ export function parseStatus(stdout: string): AuthStatus | undefined {
   } catch {
     return undefined
   }
+}
+
+// `max` and `default_claude_max_20x` read as "Max 20x".
+export function planOf(subscriptionType?: string, rateLimitTier?: string) {
+  if (!subscriptionType) return ''
+  const size = rateLimitTier?.match(/_(\d+x)$/)?.[1]
+  return [subscriptionType[0]!.toUpperCase() + subscriptionType.slice(1), size].filter(Boolean).join(' ')
+}
+
+const pad = (n: number) => String(n).padStart(2, '0')
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+// Which windows the footer shows: the fiveHourLimit and weeklyLimit settings.
+export type Show = { fiveHour: boolean; weekly: 'always' | 'over-half' | 'never' }
+
+const isShown = (l: Limit, show: Show) =>
+  l.kind === 'five_hour' ? show.fiveHour
+  : l.kind === 'seven_day' && (show.weekly === 'always' || (show.weekly === 'over-half' && l.percentUsed >= 50))
+
+// "5h 42%, resets 18:30 · 7d 63%, resets Fri", and the highest percent shown, for its color.
+export function usageOf(limits: readonly Limit[], show: Show) {
+  const parts: string[] = []
+  let used = 0
+  for (const l of limits) {
+    if (!isShown(l, show)) continue
+    const at = l.resetsAt ? new Date(l.resetsAt) : undefined
+    const resets = at ? `, resets ${l.kind === 'five_hour' ? `${pad(at.getHours())}:${pad(at.getMinutes())}` : DAYS[at.getDay()]}` : ''
+    parts.push(`${l.kind === 'five_hour' ? '5h' : '7d'} ${Math.round(l.percentUsed)}%${resets}`)
+    used = Math.max(used, l.percentUsed)
+  }
+  return { text: parts.join(' · '), used }
 }
 
 // The pin of `dir` or of its nearest parent folder.

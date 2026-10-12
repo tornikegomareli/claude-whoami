@@ -1,14 +1,28 @@
 import type { EngineInterface, Register } from 'claude-code'
-import { UNKNOWN, accountOf, parseStatus, pinFor } from './account'
-import type { Account, Pins } from './account'
+import { UNKNOWN, accountOf, parseStatus, pinFor, planOf, usageOf } from './account'
+import type { Account, Limit, Pins, Show } from './account'
 
 const USAGE = '/whoami shows the account. /whoami pin expects it in this folder, /whoami unpin stops that, /whoami ok continues on a wrong one.'
 
 let account: Account = UNKNOWN
+let plan = '' // "Max 20x"
+let limits: readonly Limit[] = []
+const show: Show = { fiveHour: true, weekly: 'over-half' }
 let pin: { dir: string; account: Account } | undefined
 let isAllowed = false // `/whoami ok` was run in this session
 
 const isWrong = () => !!pin && pin.account.id !== account.id && !isAllowed
+
+// The plan's size ("20x") is only in the global config file, beside the login.
+async function rateLimitTier($: EngineInterface) {
+  const dir = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? (await $.env.get('HOME'))
+  const text = await $.fs.read(`${dir}/.claude.json`).catch(() => '')
+  try {
+    return (JSON.parse(text) as { oauthAccount?: { organizationRateLimitTier?: string } }).oauthAccount?.organizationRateLimitTier
+  } catch {
+    return undefined
+  }
+}
 
 async function pins($: EngineInterface) {
   return ((await $.store.get('pins')) ?? {}) as Pins
@@ -22,7 +36,10 @@ async function check($: EngineInterface) {
   const r = await $.process.run(['claude', 'auth', 'status', '--json'], { env, timeoutMs: 10000 }).catch(() => undefined)
   const status = r && parseStatus(r.stdout)
   account = status ? accountOf(status) : UNKNOWN
+  plan = usesLogin ? planOf(status?.subscriptionType, await rateLimitTier($)) : ''
   pin = pinFor(await pins($), await $.session.cwd())
+  // Figures the session had before this mod loaded never raise a `session.measure` of their own.
+  limits = (await $.session.usage().catch(() => undefined))?.rateLimits ?? limits
   $.ui.invalidate('ui.render')
 }
 
@@ -73,14 +90,31 @@ export const register: Register = on => {
     return { drop: `Signed in to ${account.label}, but this folder expects ${pin?.account.label}. Run /login to switch, or /whoami ok to continue.` }
   })
 
-  // The footer's mode labels (`focus`), redrawn on the left with the account after them.
+  on('session.measure', async ($, e, next) => {
+    if (e.changed.includes('rateLimits')) {
+      limits = e.rateLimits
+      $.ui.invalidate('ui.render')
+    }
+    return next(e)
+  })
+
+  // The footer's mode labels (`focus`), redrawn on the left with the account, plan and usage after them.
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     const elements = $.ui.resolve(e)
     if (account === UNKNOWN || !('Box' in elements)) return next(e)
     const { Box, Text } = elements
+    const usage = usageOf(limits, show)
+    const parts = [
+      { text: account.label, color: 'suggestion' },
+      { text: plan, color: 'claude' },
+      { text: usage.text, color: usage.used >= 80 ? 'error' : usage.used >= 50 ? 'warning' : 'success' },
+    ].filter(p => p.text)
     return (
       <Box width="100%" justifyContent="flex-start">
-        <Text dimColor>{[...e.props.modes, account.label].join(' & ')}</Text>
+        <Text>
+          {e.props.modes.length ? <Text dimColor>{e.props.modes.join(' & ')} & </Text> : null}
+          {parts.map((p, i) => <Text key={p.color}>{i ? <Text dimColor> · </Text> : null}<Text color={p.color}>{p.text}</Text></Text>)}
+        </Text>
       </Box>
     )
   })
