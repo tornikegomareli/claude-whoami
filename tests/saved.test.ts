@@ -19,7 +19,7 @@ const LOGINS: Record<string, object> = {
 // A session that started on the default folder. `claude auth status` answers for the login that
 // CLAUDE_SECURESTORAGE_CONFIG_DIR names, in the call's env or else in the session's.
 function fakeSession(on: On) {
-  const seen = { env: { HOME } as Record<string, string>, toasts: [] as string[], opened: [] as string[] }
+  const seen = { env: { HOME } as Record<string, string>, toasts: [] as string[], opened: [] as string[], ran: [] as string[] }
   on('env.get', (_$, e) => ({ value: seen.env[e.name] }))
   on('env.set', (_$, e) => {
     if (e.value === undefined) delete seen.env[e.name]
@@ -44,6 +44,10 @@ function fakeSession(on: On) {
     return { value: { isPlaced: true } }
   })
   on('ui.close', () => ({ value: undefined }))
+  on('command.run', { command: 'reload-plugins' }, () => {
+    seen.ran.push('reload-plugins')
+    return { text: 'Reloaded' }
+  })
   on('ui.toast', (_$, e) => {
     seen.toasts.push(e.text)
     return { value: undefined }
@@ -77,6 +81,7 @@ test('the login folder follows the switch, then the start folder', () => {
 test('/account work switches the session login and the footer', async ($, on) => {
   const seen = fakeSession(on)
   mock.store(on)
+  const clock = mock.clock(on)
   const footer = async (text: string) => {
     const ui = await $.ui.mount({ plugin: 'whoami', surface: 'terminal', component: 'SessionMode', props: { modes: [] } })
     expect(await ui.find({ type: 'Text', text })).toBeTruthy()
@@ -85,12 +90,15 @@ test('/account work switches the session login and the footer', async ($, on) =>
   await $.command.run({ command: 'whoami', args: '' } as never)
   await footer('🏠 Home · me@gmail.com')
 
-  expect((await run($, 'work')).text).toBe('This session now uses 💼 Work (me@acme.com). Claude Code reads the new login within 30 seconds.')
+  expect((await run($, 'work')).text).toBe('Switched this session to 💼 Work (me@acme.com).')
   expect(seen.env.CLAUDE_SECURESTORAGE_CONFIG_DIR).toBe('/home/me/.claude-work')
+  // The reload drops the login Claude Code keeps for 30 seconds, so the switch is at once.
+  await clock.advance(1)
+  expect(seen.ran).toEqual(['reload-plugins'])
   await footer('💼 Work · me@acme.com')
 
   expect((await run($, 'work')).text).toBe('This session already uses 💼 Work.')
-  expect((await run($, '1')).text).toBe('This session now uses 🏠 Home (me@gmail.com). Claude Code reads the new login within 30 seconds.')
+  expect((await run($, '1')).text).toBe('Switched this session to 🏠 Home (me@gmail.com).')
   expect(seen.env.CLAUDE_SECURESTORAGE_CONFIG_DIR).toBe('')
 })
 
@@ -99,19 +107,23 @@ test('an account with no login is refused, and the session keeps its own', async
   mock.store(on)
   expect((await run($, 'side')).text).toBe('Side has no login yet. Log in to it from the Claude Accounts menu bar app first.')
   expect(seen.env.CLAUDE_SECURESTORAGE_CONFIG_DIR).toBe(undefined)
+  expect(seen.ran).toEqual([])
   expect((await run($, 'nope')).text).toBe('No account "nope". 1 🏠 Home, 2 💼 Work, 3 Side.')
 })
 
 test('/account opens a picker, and a pick switches and closes it', async ($, on) => {
   const seen = fakeSession(on)
   mock.store(on)
+  const clock = mock.clock(on)
   expect((await run($, '')).text).toBe(undefined)
   expect(seen.opened).toEqual(['account'])
   const pane = await $.ui.mount({ plugin: 'whoami', surface: 'terminal', component: 'Pane', requestId: 'account', props: {} as never })
   expect(await pane.find({ type: 'Select', key: 'account' })).toBeTruthy()
   await pane.select({ key: 'account', value: '/home/me/.claude-work' })
   expect(seen.env.CLAUDE_SECURESTORAGE_CONFIG_DIR).toBe('/home/me/.claude-work')
-  expect(seen.toasts).toEqual(['This session now uses 💼 Work (me@acme.com). Claude Code reads the new login within 30 seconds.'])
+  expect(seen.toasts).toEqual(['Switched this session to 💼 Work (me@acme.com).'])
+  await clock.advance(1)
+  expect(seen.ran).toEqual(['reload-plugins'])
   await pane.unmount()
 })
 

@@ -97,7 +97,7 @@ Run `/account` to open a picker of your accounts. Arrows move, Enter switches th
 | `/account` | Pick an account for this session |
 | `/account <name or number>` | Switch this session to that account |
 
-The switch sets `CLAUDE_SECURESTORAGE_CONFIG_DIR` in the session, so Claude Code reads the other folder's Keychain login. It does so on its next login read, within 30 seconds. Only the login changes: the transcript stays in the folder the session started in. An account with no login is refused, so the session keeps a working one. The variable is internal to Claude Code and can change in a later version.
+The switch sets `CLAUDE_SECURESTORAGE_CONFIG_DIR` in the session, so Claude Code reads the other folder's Keychain login. Claude Code keeps the login it read for 30 seconds, so the switch then runs `/reload-plugins`, which drops that copy: the next request goes out on the new account. Only the login changes: the transcript stays in the folder the session started in. An account with no login is refused, so the session keeps a working one. The variable is internal to Claude Code and can change in a later version.
 
 ## Settings
 
@@ -118,7 +118,7 @@ whoami makes no network requests and calls no model.
 | Runs `claude auth status --json` for the account, organization and plan | `$.process.run` |
 | Reads `organizationRateLimitTier` (the `20x`) and the email from `~/.claude.json`, or `<config folder>/.claude.json` | `$.fs.read`, `$.env.get` |
 | Reads the account names and emoji in `~/.claude-accounts/accounts.json` | `$.fs.read` |
-| Sets `CLAUDE_SECURESTORAGE_CONFIG_DIR` when you switch with `/account` | `$.env.set` |
+| Sets `CLAUDE_SECURESTORAGE_CONFIG_DIR` when you switch with `/account`, then runs `/reload-plugins` | `$.env.set`, `$.command.run`, `$.clock` |
 | Asks whether the session uses a login or an API key. It reads only the credential's kind, never the credential | `$.session.authorize` |
 | Reads the usage-limit figures that `/usage` shows | `session.measure`, `$.session.usage` |
 | Keeps your pins (folder and account) between sessions, in its own store under the Claude Code configuration folder | `$.store` |
