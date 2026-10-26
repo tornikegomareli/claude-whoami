@@ -21,12 +21,14 @@ export type Pins = Record<string, Account>
 
 export const UNKNOWN: Account = { id: 'unknown', label: 'account unknown' }
 
+// The organization as the footer names it: a personal account's generated name reads as "Personal".
+export const orgOf = (s: AuthStatus) => (s.email && s.orgName === `${s.email}'s Organization` ? 'Personal' : s.orgName)
+
 export function accountOf(s: AuthStatus): Account {
   if (s.apiProvider && s.apiProvider !== 'firstParty') return { id: `provider:${s.apiProvider}`, label: s.apiProvider }
   if (s.authMethod === 'api_key') return { id: 'api-key', label: `API key from ${s.apiKeySource ?? 'unknown source'}` }
   if (!s.loggedIn) return { id: 'none', label: 'not signed in' }
-  const org = s.email && s.orgName === `${s.email}'s Organization` ? 'Personal' : s.orgName
-  const label = [org, s.email].filter(Boolean).join(' · ')
+  const label = [orgOf(s), s.email].filter(Boolean).join(' · ')
   return { id: s.orgId ?? s.email ?? UNKNOWN.id, label: label || UNKNOWN.label }
 }
 
@@ -49,14 +51,22 @@ const pad = (n: number) => String(n).padStart(2, '0')
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 // Which windows the footer shows: the fiveHourLimit and weeklyLimit settings.
-export type Show = { fiveHour: boolean; weekly: 'always' | 'over-half' | 'never' }
+export type Show = { fiveHour: boolean; weekly: 'always' | 'over-half' | 'never'; email: 'full' | 'name' | 'hidden' }
 
-const isShown = (l: Limit, show: Show) =>
+// The footer's account part: the account's name, then the email as the email setting asks.
+export function nameAndEmail(name: string | undefined, email: string, show: Show['email']) {
+  const shown = show === 'hidden' ? '' : show === 'name' ? email.split('@')[0] : email
+  return [name, shown].filter(Boolean).join(' · ')
+}
+
+type Windows = Pick<Show, 'fiveHour' | 'weekly'>
+
+const isShown = (l: Limit, show: Windows) =>
   l.kind === 'five_hour' ? show.fiveHour
   : l.kind === 'seven_day' && (show.weekly === 'always' || (show.weekly === 'over-half' && l.percentUsed >= 50))
 
 // "5h 42%, resets 18:30 · 7d 63%, resets Fri", and the highest percent shown, for its color.
-export function usageOf(limits: readonly Limit[], show: Show) {
+export function usageOf(limits: readonly Limit[], show: Windows) {
   const parts: string[] = []
   let used = 0
   for (const l of limits) {

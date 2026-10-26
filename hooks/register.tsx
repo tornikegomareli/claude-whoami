@@ -1,5 +1,5 @@
 import type { EngineInterface, Register } from 'claude-code'
-import { UNKNOWN, accountOf, parseStatus, pinFor, planOf, usageOf } from './account'
+import { UNKNOWN, accountOf, nameAndEmail, orgOf, parseStatus, pinFor, planOf, usageOf } from './account'
 import type { Account, Limit, Pins, Show } from './account'
 import { configFile, loginDir, parseSaved, pick, storageValue, titleOf } from './saved'
 import type { Saved } from './saved'
@@ -9,12 +9,13 @@ const USAGE = '/whoami shows the account. /whoami pin expects it in this folder,
 let account: Account = UNKNOWN
 let plan = '' // "Max 20x"
 let limits: readonly Limit[] = []
-let show: Show = { fiveHour: true, weekly: 'over-half' }
+let show: Show = { fiveHour: true, weekly: 'over-half', email: 'full' }
 let pin: { dir: string; account: Account } | undefined
 let isAllowed = false // `/whoami ok` was run in this session
 let home = ''
 let dir = '' // the folder whose login the session uses
 let email = ''
+let org: string | undefined
 let saved: readonly Saved[] = [] // the accounts of the Claude Accounts menu bar app
 let emails: Record<string, string> = {} // folder to the email of its login, for the picker
 
@@ -52,6 +53,7 @@ async function check($: EngineInterface) {
   const status = r && parseStatus(r.stdout)
   account = status ? accountOf(status) : UNKNOWN
   email = status?.email ?? ''
+  org = status && orgOf(status)
   await readSaved($).catch(() => {}) // without the list the footer shows the organization
   plan = usesLogin ? planOf(status?.subscriptionType, (await oauthAccount($, dir))?.organizationRateLimitTier) : ''
   pin = pinFor(await pins($), await $.session.cwd())
@@ -120,6 +122,7 @@ export const register: Register = (on, options) => {
   show = {
     fiveHour: options.fiveHourLimit !== false,
     weekly: options.weeklyLimit === 'always' || options.weeklyLimit === 'never' ? options.weeklyLimit : 'over-half',
+    email: options.email === 'name' || options.email === 'hidden' ? options.email : 'full',
   }
 
   on('session.start', async ($, e, next) => {
@@ -188,7 +191,7 @@ export const register: Register = (on, options) => {
     const usage = usageOf(limits, show)
     const mine = saved.find(a => a.configDir === dir)
     const parts = [
-      { text: mine ? [titleOf(mine), email].filter(Boolean).join(' · ') : account.label, color: 'suggestion' },
+      { text: email ? nameAndEmail(mine ? titleOf(mine) : org, email, show.email) : account.label, color: 'suggestion' },
       { text: plan, color: 'claude' },
       { text: usage.text, color: usage.used >= 80 ? 'error' : usage.used >= 50 ? 'warning' : 'success' },
     ].filter(p => p.text)

@@ -2,6 +2,7 @@ import type { On } from 'claude-code'
 import { test, expect, mock } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import { loginDir, parseSaved, pick, storageValue, titleOf } from '../hooks/saved'
+import { nameAndEmail } from '../hooks/account'
 
 const HOME = '/home/me'
 const ACCOUNTS = [
@@ -112,4 +113,20 @@ test('/account opens a picker, and a pick switches and closes it', async ($, on)
   expect(seen.env.CLAUDE_SECURESTORAGE_CONFIG_DIR).toBe('/home/me/.claude-work')
   expect(seen.toasts).toEqual(['This session now uses 💼 Work (me@acme.com). Claude Code reads the new login within 30 seconds.'])
   await pane.unmount()
+})
+
+test('the email setting shortens or hides the email', () => {
+  expect(nameAndEmail('💼 Work', 'me@acme.com', 'full')).toBe('💼 Work · me@acme.com')
+  expect(nameAndEmail('💼 Work', 'me@acme.com', 'name')).toBe('💼 Work · me')
+  expect(nameAndEmail('💼 Work', 'me@acme.com', 'hidden')).toBe('💼 Work')
+  expect(nameAndEmail(undefined, 'me@acme.com', 'hidden')).toBe('')
+})
+
+test('the footer hides the email when set to', { options: { email: 'hidden' } }, async ($, on) => {
+  fakeSession(on)
+  mock.store(on)
+  await $.command.run({ command: 'whoami', args: '' } as never)
+  const ui = await $.ui.mount({ plugin: 'whoami', surface: 'terminal', component: 'SessionMode', props: { modes: [] } })
+  expect(await ui.find({ type: 'Text', text: '🏠 Home' })).toBeTruthy()
+  await ui.unmount()
 })

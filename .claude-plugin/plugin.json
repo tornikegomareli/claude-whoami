@@ -35,6 +35,17 @@
         "always",
         "never"
       ]
+    },
+    "email": {
+      "type": "string",
+      "title": "Show the email",
+      "description": "full: the footer shows the whole email. name: only the part before @. hidden: no email, only the account or organization name.",
+      "default": "full",
+      "options": [
+        "full",
+        "name",
+        "hidden"
+      ]
     }
   }
 }

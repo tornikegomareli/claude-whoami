@@ -107,6 +107,7 @@ Change them in `/config` (search for `whoami`), or with `/plugin configure whoam
 |---|---|---|
 | `fiveHourLimit` | `true` | On: show how much of the 5-hour usage limit is used, and when it resets. |
 | `weeklyLimit` | `over-half` | `always`: always show the weekly usage limit. `over-half`: only once it is 50% used. `never`: do not show it. |
+| `email` | `full` | `full`: show the whole email. `name`: only the part before `@`. `hidden`: no email, only the account or organization name. |
 
 ## What it can reach
 
