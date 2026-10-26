@@ -1,6 +1,6 @@
 import type { EngineInterface, Register } from 'claude-code'
 import { UNKNOWN, accountOf, nameAndEmail, orgOf, parseStatus, pinFor, planOf, usageOf } from './account'
-import type { Account, Limit, Pins, Show } from './account'
+import type { Account, AuthStatus, Limit, Pins, Show } from './account'
 import { configFile, loginDir, parseSaved, pick, storageValue, titleOf } from './saved'
 import type { Saved } from './saved'
 
@@ -25,10 +25,12 @@ const ACCOUNT_USAGE = '/account opens a picker. /account <name or number> switch
 const isWrong = () => !!pin && pin.account.id !== account.id && !isAllowed
 
 // The global config file of a folder holds the login's email and the plan's size ("20x").
+type OAuthAccount = { organizationRateLimitTier?: string; emailAddress?: string; organizationName?: string; organizationUuid?: string }
+
 async function oauthAccount($: EngineInterface, folder: string) {
   const text = await $.fs.read(configFile(folder, home)).catch(() => '')
   try {
-    return (JSON.parse(text) as { oauthAccount?: { organizationRateLimitTier?: string; emailAddress?: string } }).oauthAccount
+    return (JSON.parse(text) as { oauthAccount?: OAuthAccount }).oauthAccount
   } catch {
     return undefined
   }
@@ -44,18 +46,27 @@ async function pins($: EngineInterface) {
   return ((await $.store.get('pins')) ?? {}) as Pins
 }
 
+// `claude auth status` takes the email and organization from the config folder's profile, which names
+// another account once the session reads the login of another folder. The login folder's own profile
+// names the account of the login, so it wins.
+function withLogin(status: AuthStatus | undefined, login: OAuthAccount | undefined): AuthStatus | undefined {
+  if (!status?.email || !login?.emailAddress) return status
+  return { ...status, email: login.emailAddress, orgName: login.organizationName ?? status.orgName, orgId: login.organizationUuid ?? status.orgId }
+}
+
 // Reads the account and this folder's pin, then redraws the footer label and the band.
 async function check($: EngineInterface) {
   // `claude auth status` reports ANTHROPIC_API_KEY even when the session declined it and uses the login.
   const usesLogin = (await $.session.authorize().catch(() => null))?.kind === 'bearer'
   const env = usesLogin ? { ANTHROPIC_API_KEY: '' } : undefined
   const r = await $.process.run(['claude', 'auth', 'status', '--json'], { env, timeoutMs: 10000 }).catch(() => undefined)
-  const status = r && parseStatus(r.stdout)
+  await readSaved($).catch(() => {}) // without the list the footer shows the organization
+  const login = await oauthAccount($, dir)
+  const status = withLogin(r && parseStatus(r.stdout), login)
   account = status ? accountOf(status) : UNKNOWN
   email = status?.email ?? ''
   org = status && orgOf(status)
-  await readSaved($).catch(() => {}) // without the list the footer shows the organization
-  plan = usesLogin ? planOf(status?.subscriptionType, (await oauthAccount($, dir))?.organizationRateLimitTier) : ''
+  plan = usesLogin ? planOf(status?.subscriptionType, login?.organizationRateLimitTier) : ''
   pin = pinFor(await pins($), await $.session.cwd())
   // Figures the session had before this mod loaded never raise a `session.measure` of their own.
   limits = (await $.session.usage().catch(() => undefined))?.rateLimits ?? limits
@@ -98,13 +109,12 @@ async function switchTo($: EngineInterface, target: Saved) {
   if (target.configDir === dir) return `This session already uses ${titleOf(target)}.`
   const value = storageValue(target.configDir, home)
   const r = await $.process.run(['claude', 'auth', 'status', '--json'], { env: { CLAUDE_SECURESTORAGE_CONFIG_DIR: value, ANTHROPIC_API_KEY: '' }, timeoutMs: 10000 }).catch(() => undefined)
-  const status = r && parseStatus(r.stdout)
-  if (!status?.loggedIn) return `${titleOf(target)} has no login yet. Log in to it from the Claude Accounts menu bar app first.`
+  if (!(r && parseStatus(r.stdout))?.loggedIn) return `${titleOf(target)} has no login yet. Log in to it from the Claude Accounts menu bar app first.`
   const set = await $.env.set('CLAUDE_SECURESTORAGE_CONFIG_DIR', value)
   if (set.deny) return `Could not switch to ${titleOf(target)}: ${set.deny}`
   $.clock.after(0, () => void $.command.run({ command: 'reload-plugins' }).catch(() => {}))
   await check($)
-  return `Switched this session to ${titleOf(target)} (${status.email ?? 'no email'}).`
+  return `Switched this session to ${titleOf(target)}${email ? ` (${email})` : ''}.`
 }
 
 async function accountCommand($: EngineInterface, arg: string) {

@@ -27,12 +27,16 @@ function fakeSession(on: On) {
     return { value: {} }
   })
   on('process.run', (_$, e) => {
+    // As Claude Code does: the email and organization come from the config folder's profile (the
+    // default one here), and only the login state and the plan from the login.
     const storage = e.init?.env?.CLAUDE_SECURESTORAGE_CONFIG_DIR ?? seen.env.CLAUDE_SECURESTORAGE_CONFIG_DIR ?? ''
-    return { value: { exitCode: 0, stdout: JSON.stringify(LOGINS[storage]), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    const login = LOGINS[storage] as { loggedIn: boolean; subscriptionType?: string }
+    const status = login.loggedIn ? { ...LOGINS[''], subscriptionType: login.subscriptionType } : login
+    return { value: { exitCode: 0, stdout: JSON.stringify(status), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('fs.read', (_$, e) => {
     if (e.path === '/home/me/.claude-accounts/accounts.json') return { value: JSON.stringify(ACCOUNTS) }
-    if (e.path === '/home/me/.claude-work/.claude.json') return { value: JSON.stringify({ oauthAccount: { emailAddress: 'me@acme.com' } }) }
+    if (e.path === '/home/me/.claude-work/.claude.json') return { value: JSON.stringify({ oauthAccount: { emailAddress: 'me@acme.com', organizationName: 'Acme', organizationUuid: 'org-acme' } }) }
     if (e.path === '/home/me/.claude.json') return { value: JSON.stringify({ oauthAccount: { emailAddress: 'me@gmail.com' } }) }
     return { deny: 'no such file' }
   })
