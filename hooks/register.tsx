@@ -101,20 +101,24 @@ async function command($: EngineInterface, arg: string) {
 }
 
 // Points the session at the login of another account; a login with no Keychain item is refused first,
-// so the session never loses its own. Claude Code keeps the login it read for 30 seconds, and
-// /reload-plugins drops that copy, so the next request already goes out on the new account.
-// A command hook cannot start another command, so the reload runs from a timer, once this one is done.
+// so the session never loses its own.
 async function switchTo($: EngineInterface, target: Saved) {
   await readSaved($)
-  if (target.configDir === dir) return `This session already uses ${titleOf(target)}.`
+  if (target.configDir === dir) return { text: `This session already uses ${titleOf(target)}.` }
   const value = storageValue(target.configDir, home)
   const r = await $.process.run(['claude', 'auth', 'status', '--json'], { env: { CLAUDE_SECURESTORAGE_CONFIG_DIR: value, ANTHROPIC_API_KEY: '' }, timeoutMs: 10000 }).catch(() => undefined)
-  if (!(r && parseStatus(r.stdout))?.loggedIn) return `${titleOf(target)} has no login yet. Log in to it from the Claude Accounts menu bar app first.`
+  if (!(r && parseStatus(r.stdout))?.loggedIn) return { text: `${titleOf(target)} has no login yet. Log in to it from the Claude Accounts menu bar app first.` }
   const set = await $.env.set('CLAUDE_SECURESTORAGE_CONFIG_DIR', value)
-  if (set.deny) return `Could not switch to ${titleOf(target)}: ${set.deny}`
-  $.clock.after(0, () => void $.command.run({ command: 'reload-plugins' }).catch(() => {}))
+  if (set.deny) return { text: `Could not switch to ${titleOf(target)}: ${set.deny}` }
   await check($)
-  return `Switched this session to ${titleOf(target)}${email ? ` (${email})` : ''}.`
+  return { text: `Switched this session to ${titleOf(target)}${email ? ` (${email})` : ''}.`, isSwitched: true }
+}
+
+// Claude Code keeps the login it read for 30 seconds, and /reload-plugins drops that copy, so the next
+// request already goes out on the new account. The reload unloads this mod, so it runs last, from a
+// timer: a command hook cannot start another command, and a toast after the reload is dropped.
+function reloadSoon($: EngineInterface) {
+  $.clock.after(0, () => void $.command.run({ command: 'reload-plugins' }).catch(() => {}))
 }
 
 async function accountCommand($: EngineInterface, arg: string) {
@@ -128,7 +132,9 @@ async function accountCommand($: EngineInterface, arg: string) {
   }
   const target = pick(saved, arg)
   if (!target) return `No account "${arg}". ${saved.map((a, i) => `${i + 1} ${titleOf(a)}`).join(', ')}.`
-  return switchTo($, target)
+  const result = await switchTo($, target)
+  if (result.isSwitched) reloadSoon($)
+  return result.text
 }
 
 export const register: Register = (on, options) => {
@@ -167,9 +173,10 @@ export const register: Register = (on, options) => {
           autoFocus
           onSelect={async value => {
             const target = saved.find(a => a.configDir === value)
-            const text = target ? await switchTo($, target) : 'That account is gone from the list.'
+            const result = target ? await switchTo($, target) : { text: 'That account is gone from the list.' }
             await $.ui.close({ id: PICKER })
-            $.ui.toast(text, { timeoutMs: 8000 })
+            $.ui.toast(result.text, { timeoutMs: 8000 })
+            if (result.isSwitched) reloadSoon($)
           }}
         />
         <Text dimColor>Enter switches this session. Esc closes.</Text>
