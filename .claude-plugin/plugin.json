@@ -1,6 +1,6 @@
 {
   "name": "whoami",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Claude Code mod: shows which Claude account, organization and plan the session uses and how much of the usage limit is left, and holds prompts in a folder pinned to another account.",
   "author": {
     "name": "tornikegomareli",
