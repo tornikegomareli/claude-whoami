@@ -18,10 +18,12 @@ const LOGINS: Record<string, object> = {
 
 // A session that started on the default folder. `claude auth status` answers for the login that
 // CLAUDE_SECURESTORAGE_CONFIG_DIR names, in the call's env or else in the session's.
-function fakeSession(on: On) {
-  const seen = { env: { HOME } as Record<string, string>, toasts: [] as string[], opened: [] as string[], ran: [] as string[] }
+// `refuse` makes env.set throw, as Claude Code's Team policy does once the session ran on a Team organization.
+function fakeSession(on: On, refuse = false) {
+  const seen = { env: { HOME } as Record<string, string>, toasts: [] as string[], opened: [] as string[], closed: [] as string[], ran: [] as string[] }
   on('env.get', (_$, e) => ({ value: seen.env[e.name] }))
   on('env.set', (_$, e) => {
+    if (refuse) throw new Error('env (managed): CLAUDE_SECURESTORAGE_CONFIG_DIR is not for plugins outside policy to change')
     if (e.value === undefined) delete seen.env[e.name]
     else seen.env[e.name] = e.value
     return { value: {} }
@@ -47,7 +49,10 @@ function fakeSession(on: On) {
     seen.opened.push(e.id)
     return { value: { isPlaced: true } }
   })
-  on('ui.close', () => ({ value: undefined }))
+  on('ui.close', (_$, e) => {
+    seen.closed.push(e.id)
+    return { value: undefined }
+  })
   on('command.run', { command: 'reload-plugins' }, () => {
     seen.ran.push('reload-plugins')
     return { text: 'Reloaded' }
@@ -145,4 +150,20 @@ test('the footer hides the email when set to', { options: { email: 'hidden' } },
   const ui = await $.ui.mount({ plugin: 'whoami', surface: 'terminal', component: 'SessionMode', props: { modes: [] } })
   expect(await ui.find({ type: 'Text', text: '🏠 Home' })).toBeTruthy()
   await ui.unmount()
+})
+
+test('a switch the policy refuses closes the picker and says how to start a session on that account', async ($, on) => {
+  const seen = fakeSession(on, true)
+  mock.store(on)
+  const clock = mock.clock(on)
+  await run($, '')
+  const pane = await $.ui.mount({ plugin: 'whoami', surface: 'terminal', component: 'Pane', requestId: 'account', props: {} as never })
+  await pane.select({ key: 'account', value: '/home/me/.claude-work' })
+  expect(seen.closed).toEqual(['account'])
+  expect(seen.toasts).toEqual(['Claude Code does not let plugins switch accounts in this session. Start a new session on 💼 Work: CLAUDE_CONFIG_DIR=~/.claude-work claude'])
+  expect(seen.env.CLAUDE_SECURESTORAGE_CONFIG_DIR).toBe(undefined)
+  await clock.advance(1)
+  expect(seen.ran).toEqual([])
+  await pane.unmount()
+  expect((await run($, 'home')).text).toBe('This session already uses 🏠 Home.')
 })

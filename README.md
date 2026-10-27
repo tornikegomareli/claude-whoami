@@ -99,6 +99,8 @@ Run `/account` to open a picker of your accounts. Arrows move, Enter switches th
 
 The switch sets `CLAUDE_SECURESTORAGE_CONFIG_DIR` in the session, so Claude Code reads the other folder's Keychain login. Claude Code keeps the login it read for 30 seconds, so the switch then runs `/reload-plugins`, which drops that copy: the next request goes out on the new account. Only the login changes: the transcript stays in the folder the session started in. An account with no login is refused, so the session keeps a working one. The variable is internal to Claude Code and can change in a later version.
 
+Once a session has run on a Team or Enterprise organization, Claude Code's policy keeps plugins from changing that variable for the rest of the session. `/account` then says so and gives the command that starts a new session on the account you picked, such as `CLAUDE_CONFIG_DIR=~/.claude-work claude`.
+
 ## Settings
 
 Change them in `/config` (search for `whoami`), or with `/plugin configure whoami@claude-whoami`.

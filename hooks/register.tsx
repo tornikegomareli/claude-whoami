@@ -101,15 +101,19 @@ async function command($: EngineInterface, arg: string) {
 }
 
 // Points the session at the login of another account; a login with no Keychain item is refused first,
-// so the session never loses its own.
+// so the session never loses its own. Once a session ran on a Team organization, Claude Code's policy
+// refuses the change (env.set rejects), and only a new session can use the other account.
 async function switchTo($: EngineInterface, target: Saved) {
   await readSaved($)
   if (target.configDir === dir) return { text: `This session already uses ${titleOf(target)}.` }
   const value = storageValue(target.configDir, home)
   const r = await $.process.run(['claude', 'auth', 'status', '--json'], { env: { CLAUDE_SECURESTORAGE_CONFIG_DIR: value, ANTHROPIC_API_KEY: '' }, timeoutMs: 10000 }).catch(() => undefined)
   if (!(r && parseStatus(r.stdout))?.loggedIn) return { text: `${titleOf(target)} has no login yet. Log in to it from the Claude Accounts menu bar app first.` }
-  const set = await $.env.set('CLAUDE_SECURESTORAGE_CONFIG_DIR', value)
-  if (set.deny) return { text: `Could not switch to ${titleOf(target)}: ${set.deny}` }
+  const set = await $.env.set('CLAUDE_SECURESTORAGE_CONFIG_DIR', value).catch(() => ({ deny: 'refused' }))
+  if (set.deny) {
+    const start = target.configDir === `${home}/.claude` ? 'claude' : `CLAUDE_CONFIG_DIR=${target.configDir.replace(home, '~')} claude`
+    return { text: `Claude Code does not let plugins switch accounts in this session. Start a new session on ${titleOf(target)}: ${start}` }
+  }
   await check($)
   return { text: `Switched this session to ${titleOf(target)}${email ? ` (${email})` : ''}.`, isSwitched: true }
 }
